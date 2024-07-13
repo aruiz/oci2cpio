@@ -92,7 +92,7 @@ for i in `jq '.layers[] | select(.mediaType == "application/vnd.oci.image.layer.
     index_text=`printf "%02d" $index`
     TARGET="${DESTDIR}/${index_text}.${i}.cpio"
     if ! bsdtar --format=newc -cf - @$DESTDIR/$i > $TARGET  ; then
-        "Could not conver $DESTDIR/$i to cpio"  1>&2
+        "Could not convert $DESTDIR/$i to cpio"  1>&2
         exit 1
     fi
     ((index++))
