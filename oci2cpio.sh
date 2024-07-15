@@ -70,7 +70,7 @@ else
     fi
 fi
 echo "Creating cpio archive at ${DESTDIR}"
-
+ 
 if ! skopeo copy docker://$REMOTE dir:$DESTDIR ; then
     echo "skopeo failed to download OCI image" 1>&2
     exit 1
@@ -81,6 +81,7 @@ if ! test -f $DESTDIR/manifest.json ; then
     exit 1
 fi
 
+INITRAMFS=`mktemp`
 
 index=0
 for i in `jq '.layers[] | select(.mediaType == "application/vnd.oci.image.layer.v1.tar+gzip") | .digest' $DESTDIR/manifest.json | sed -s s/\"sha256\:// | sed -s s/\"$//`; do
@@ -92,8 +93,19 @@ for i in `jq '.layers[] | select(.mediaType == "application/vnd.oci.image.layer.
     index_text=`printf "%02d" $index`
     TARGET="${DESTDIR}/${index_text}.${i}.cpio"
     if ! bsdtar --format=newc -cf - @$DESTDIR/$i > $TARGET  ; then
-        "Could not convert $DESTDIR/$i to cpio"  1>&2
+        echo "Could not convert $DESTDIR/$i to cpio"  1>&2
+        rm -f $INITRAMFS
         exit 1
     fi
+
+    if ! cat $TARGET >> $INITRAMFS ; then
+        echo "Could not append archive to temporary file $INITRAMFS" 1>&2
+        rm -f $INITRAMFS
+        exit 1
+    fi
+
     ((index++))
 done
+
+echo "Bundling all layers into a single CPIO archive: $DESTDIR/initramfs.cpio"
+mv $INITRAMFS $DESTDIR/initramfs.cpio
