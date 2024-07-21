@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/fakeroot bash
 
 # Author: Alberto Ruiz <aruiz@redhat.com>
 # License: MIT
@@ -81,31 +81,29 @@ if ! test -f $DESTDIR/manifest.json ; then
     exit 1
 fi
 
-INITRAMFS=`mktemp`
+mkdir $DESTDIR/archive
 
-index=0
 for i in `jq '.layers[] | select(.mediaType == "application/vnd.oci.image.layer.v1.tar+gzip") | .digest' $DESTDIR/manifest.json | sed -s s/\"sha256\:// | sed -s s/\"$//`; do
     if ! test -f $DESTDIR/$i ; then
         echo "$DESTDIR/$i did not exist" 1>&2
         exit 1
     fi
 
-    index_text=`printf "%02d" $index`
-    TARGET="${DESTDIR}/${index_text}.${i}.cpio"
-    if ! bsdtar --format=newc -cf - @$DESTDIR/$i > $TARGET  ; then
-        echo "Could not convert $DESTDIR/$i to cpio"  1>&2
-        rm -f $INITRAMFS
+    if ! tar xvf $DESTDIR/$i -C $DESTDIR/archive ; then
+        echo "Could not unpack $DESTDIR/$i to $DESTDIR/archive"  1>&2
         exit 1
     fi
-
-    if ! cat $TARGET >> $INITRAMFS ; then
-        echo "Could not append archive to temporary file $INITRAMFS" 1>&2
-        rm -f $INITRAMFS
-        exit 1
-    fi
-
-    ((index++))
 done
 
+cd $DESTDIR/archive
+
 echo "Bundling all layers into a single CPIO archive: $DESTDIR/initramfs.cpio"
-mv $INITRAMFS $DESTDIR/initramfs.cpio
+
+if ! find . -depth -print0 | cpio --null --create --format=newc --no-absolute-filenames --verbose --preserve-modification-time > $DESTDIR/initramfs.cpio ; then
+    cd -
+    echo "Could not create cpio archive " 1>&2
+    exit 1
+fi
+cd -
+
+rm -rf $DESTDIR/archive
